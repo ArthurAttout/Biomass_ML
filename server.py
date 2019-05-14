@@ -10,10 +10,14 @@ from io import BytesIO
 import json
 import base64
 import os, sys
+import random
 from keras.models import load_model
 from flask import request
+from tasks import train_model
 import urllib.request
+import string
 from werkzeug.serving import run_simple
+import mysql.connector
 
 app = Flask(__name__)
 app.debug = True
@@ -21,6 +25,13 @@ array_class = ["african_herbs","hay","marjorem","moss_green","moss_grey","rabbit
 model = load_model("/data/tera_1/partage/Biomass_ML/model.hdf5")
 model._make_predict_function()
 img_width, img_height = 250, 250
+
+mydb = mysql.connector.connect(
+	host="192.168.1.67",
+	user="python",
+	passwd="python",
+	database="biomass_database"
+)
 
 
 @app.route('/identify', methods = ['POST'])
@@ -107,6 +118,71 @@ def identifyMaskHandler():
 		}
 		return json.dumps(response)
 		
+		
+#Expected body : 
+#{
+#	"biomass_name":"African herbs",
+#	"url_images":[
+#		'https://....',
+#		'https://....',
+#		'https://....',
+#	]
+#}
+
+@app.route('/add_images', methods = ['POST'])
+def add_images():
+
+	def randomString(stringLength=10):
+		"""Generate a random string of fixed length """
+		letters = string.ascii_uppercase
+		return ''.join(random.choice(letters) for i in range(stringLength))
+		
+	content = request.get_json()
+	subfolder_name = content['biomass_name']
+	full_path = "/data/tera_1/partage/dataset/train/{}".format(subfolder_name)
+	
+	print ("Check if {} exists".format(full_path))
+	if os.path.exists(full_path):
+		print("Path does exist")
+		
+	else:
+		print("Path does not exist. Creating.")
+		os.makedirs(full_path)
+		
+		cursor = mydb.cursor()
+		query_insert_class = '''
+			INSERT INTO biomass (name,path_dataset) 
+			VALUES ('{}','{}');
+		'''
+		cursor.execute(query_insert_class.format(content['biomass_name'], full_path))
+		mydb.commit()
+	
+	for url in content["url_images"]:
+		print("Retrieving image at URL {}".format(url))
+		with urllib.request.urlopen(url) as response:
+			im = Image.open(BytesIO(response.read()))
+			path_save = "{0}/{1}.png".format(full_path,randomString())
+			
+			im.save(path_save,"PNG")
+			print("Image saved at {}".format(path_save))
+			
+	file_count = 0
+	for _, _, filenames in os.walk(full_path):
+		file_count += len(filenames)
+		
+	print("{} files in augmented folder".format(file_count))
+	if(file_count >= 100):
+		print("New folder exceeds threshold. Adding ML_class")
+		
+		cursor = mydb.cursor()
+		query_insert_class = '''
+			INSERT INTO report_image (path) 
+			VALUES ('{}');
+		'''
+		cursor.execute(query_insert_image.format(img_path))
+		mydb.commit()
+		
+	return "OK"
 		
 if __name__ == '__main__':
 	app.run(host = '0.0.0.0',port=5001)
