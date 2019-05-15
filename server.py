@@ -13,7 +13,7 @@ import os, sys
 import random
 from keras.models import load_model
 from flask import request
-from tasks import train_model
+from tasks import handle_images
 import urllib.request
 import string
 from werkzeug.serving import run_simple
@@ -131,56 +131,11 @@ def identifyMaskHandler():
 
 @app.route('/add_images', methods = ['POST'])
 def add_images():
-
-	def randomString(stringLength=10):
-		"""Generate a random string of fixed length """
-		letters = string.ascii_uppercase
-		return ''.join(random.choice(letters) for i in range(stringLength))
 		
 	content = request.get_json()
-	subfolder_name = content['biomass_name']
-	full_path = "/data/tera_1/partage/dataset/train/{}".format(subfolder_name)
+	print("Starting task")
 	
-	print ("Check if {} exists".format(full_path))
-	if os.path.exists(full_path):
-		print("Path does exist")
-		
-	else:
-		print("Path does not exist. Creating.")
-		os.makedirs(full_path)
-		
-		cursor = mydb.cursor()
-		query_insert_class = '''
-			INSERT INTO biomass (name,path_dataset) 
-			VALUES ('{}','{}');
-		'''
-		cursor.execute(query_insert_class.format(content['biomass_name'], full_path))
-		mydb.commit()
-	
-	for url in content["url_images"]:
-		print("Retrieving image at URL {}".format(url))
-		with urllib.request.urlopen(url) as response:
-			im = Image.open(BytesIO(response.read()))
-			path_save = "{0}/{1}.png".format(full_path,randomString())
-			
-			im.save(path_save,"PNG")
-			print("Image saved at {}".format(path_save))
-			
-	file_count = 0
-	for _, _, filenames in os.walk(full_path):
-		file_count += len(filenames)
-		
-	print("{} files in augmented folder".format(file_count))
-	if(file_count >= 100):
-		print("New folder exceeds threshold. Adding ML_class")
-		
-		cursor = mydb.cursor()
-		query_insert_class = '''
-			INSERT INTO report_image (path) 
-			VALUES ('{}');
-		'''
-		cursor.execute(query_insert_image.format(img_path))
-		mydb.commit()
+	handle_images.delay(content)
 		
 	return "OK"
 		
