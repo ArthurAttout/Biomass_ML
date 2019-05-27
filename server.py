@@ -60,14 +60,21 @@ def identifyHandler():
 
 		arr = np.array(im)
 		arrPred = np.asarray([i / 255 for i in arr.reshape(187500)])
-		pred = model.predict(arrPred.reshape(1,img_width,img_height,3))
-		pred_class = model.predict_classes(arrPred.reshape(1,img_width,img_height,3))[0]
+		pred = []
 		
-		float_list = [float(i) for i in list(pred[0])]
-		print("Predicted class {}, presumably {}, with {}".format(pred_class,array_class[pred_class],max(float_list)))
+		for i in range (0,20):
+			pr = model.predict(arrPred.reshape(1,img_width,img_height,3))[0]
+			pred.append(pr)
+		
+		float_list = [float(i) for i in list(np.mean(pred, axis=0))]
+		likely_class = int(np.argmax(np.mean(pred, axis=0)))
+		certitude = float(1 - np.std(pred,axis=0)[np.argmax(np.mean(pred, axis=0))])
+		print("{0}, certitude {1}".format(likely_class, certitude))
+		
 		response = {
 			"predictions":float_list,
-			"likely_class":float_list.index(max(float_list))
+			"likely_class":likely_class,
+			"certitude":certitude
 		}
 		return json.dumps(response)
 		
@@ -111,10 +118,12 @@ def identifyMaskHandler():
 		for prediction in float_list:
 			renormalized.append(prediction / np.sum(float_list))
 		
+		likely = renormalized.index(max(renormalized))
 		print("Renormalized list is {}".format(renormalized))
 		response = {
 			"predictions":renormalized,
-			"likely_class":renormalized.index(max(renormalized))
+			"likely_class":likely,
+			"certitude":confusion_matrix[likely]
 		}
 		return json.dumps(response)
 		
