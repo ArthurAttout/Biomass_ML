@@ -17,15 +17,15 @@ from tasks import handle_images
 import urllib.request
 import string
 from werkzeug.serving import run_simple
+from keras import backend as K
+from tensorflow import Graph, Session
 import mysql.connector
 
 app = Flask(__name__)
 app.debug = True
 array_class = ["african_herbs","hay","marjorem","moss_green","moss_grey","rabbit_food","rosemary","sugar","tobacco"]
-model = load_model("/data/tera_1/partage/Biomass_ML/model.hdf5")
-model._make_predict_function()
 img_width, img_height = 250, 250
-
+		
 mydb = mysql.connector.connect(
 	host="192.168.1.67",
 	user="python",
@@ -33,12 +33,11 @@ mydb = mysql.connector.connect(
 	database="biomass_database"
 )
 
-
 @app.route('/identify', methods = ['POST'])
 def identifyHandler():
 	content = request.get_json()
 	url_host = content['url']
-	
+
 	print(url_host)
 	
 	with urllib.request.urlopen(url_host) as response:
@@ -62,30 +61,43 @@ def identifyHandler():
 		arrPred = np.asarray([i / 255 for i in arr.reshape(187500)])
 		pred = []
 		
-		for i in range (0,20):
-			pr = model.predict(arrPred.reshape(1,img_width,img_height,3))[0]
-			pred.append(pr)
-		
-		float_list = [float(i) for i in list(np.mean(pred, axis=0))]
-		likely_class = int(np.argmax(np.mean(pred, axis=0)))
-		certitude = float(1 - np.std(pred,axis=0)[np.argmax(np.mean(pred, axis=0))])
-		print("{0}, certitude {1}".format(likely_class, certitude))
-		
-		response = {
-			"predictions":float_list,
-			"likely_class":likely_class,
-			"certitude":certitude
-		}
-		return json.dumps(response)
+		graph1 = Graph()
+		with graph1.as_default():
+			session1 = Session()
+			with session1.as_default():
+				model_0 = load_model("/data/tera_1/partage/Biomass_ML/model.hdf5")
+				for i in range (0,20):
+					pr = model_0.predict(arrPred.reshape(1,img_width,img_height,3))[0]
+					pred.append(pr)
+				
+				float_list = [float(i) for i in list(np.mean(pred, axis=0))]
+				likely_class = int(np.argmax(np.mean(pred, axis=0)))
+				certitude = float(1 - np.std(pred,axis=0)[np.argmax(np.mean(pred, axis=0))])
+				print("{0}, certitude {1}".format(likely_class, certitude))
+				
+				response = {
+					"predictions":float_list,
+					"likely_class":likely_class,
+					"certitude":certitude
+				}
+				return json.dumps(response)
 		
 @app.route('/identifyWithMask', methods = ['POST'])
 def identifyMaskHandler():
 	content = request.get_json()
 	url_host = content['url']
-	classes_to_exclude = content['classes_to_exclude']
+	#classes_to_exclude = content['classes_to_exclude']
+	id_model_target = content['model_target']
 	
 	print(url_host)
-	print("Class excluded : {}".format(classes_to_exclude))
+	print("Target model: {}".format(id_model_target))
+	
+	if id_model_target == '1':
+		path_target = "/data/tera_1/partage/Biomass_ML/biomasse-1-2-3.hdf5"
+	elif id_model_target == '2':
+		path_target = "/data/tera_1/partage/Biomass_ML/biomasse-4-5-6.hdf5"
+	elif id_model_target == '3':
+		path_target = "/data/tera_1/partage/Biomass_ML/biomasse-7-8-9.hdf5"
 	
 	with urllib.request.urlopen(url_host) as response:
 
@@ -104,28 +116,22 @@ def identifyMaskHandler():
 		im = im.resize((img_width, img_height))
 		arr = np.array(im)
 		arrPred = np.asarray([i / 255 for i in arr.reshape(187500)])
-		pred = model.predict(arrPred.reshape(1,img_width,img_height,3))
-		float_list = [float(i) for i in list(pred[0])]
-		
-		print("Base list is {}".format(float_list))
-		
-		for excluded in classes_to_exclude:
-			float_list[excluded] = 0
-		
-		print("Elagued list is {}".format(float_list))
-		
-		renormalized = []
-		for prediction in float_list:
-			renormalized.append(prediction / np.sum(float_list))
-		
-		likely = renormalized.index(max(renormalized))
-		print("Renormalized list is {}".format(renormalized))
-		response = {
-			"predictions":renormalized,
-			"likely_class":likely,
-			"certitude":confusion_matrix[likely]
-		}
-		return json.dumps(response)
+		graph1 = Graph()
+		with graph1.as_default():
+			session1 = Session()
+			with session1.as_default():
+				model_target = load_model(path_target)
+				pred = model_target.predict(arrPred.reshape(1,img_width,img_height,3))
+				float_list = [float(i) for i in list(np.mean(pred, axis=0))]
+				likely_class = int(np.argmax(np.mean(pred, axis=0)))
+				
+				response = {
+					"predictions":float_list,
+					"likely_class":likely_class,
+					"certitude":max(float_list)
+				}
+				print("Identified with geoloc as {}".format(response))
+				return json.dumps(response)
 		
 		
 #Expected body : 
